@@ -101,7 +101,10 @@ function toggleTag(el) {
 }
 
 function startChat() {
-  const interests = [...document.querySelectorAll('.tag.selected')].map(t => t.textContent).join(',');
+  const interests = [...document.querySelectorAll('.tag.selected')]
+    .map(t => t.textContent)
+    .join(',');
+
   window.location.href = `/chat/?mode=${selectedMode}&interests=${encodeURIComponent(interests)}`;
 }
 
