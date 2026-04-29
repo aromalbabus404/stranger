@@ -7,26 +7,76 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         await self.accept()
+        self.partner = None
+        self.room_group_name = None
+        print("User connected")
 
+    async def disconnect(self, close_code):
         global waiting_users
 
-        print("User connected")
+        if self in waiting_users:
+            waiting_users.remove(self)
+
+        if self.partner:
+            await self.partner.send(text_data=json.dumps({
+                "type": "partner_disconnected"
+            }))
+
+    async def receive(self, text_data):
+        data = json.loads(text_data)
+        msg_type = data.get("type")
+
+        if msg_type == "find_partner":
+            await self.find_partner()
+
+        elif msg_type == "skip":
+            await self.skip_partner()
+
+        elif msg_type == "chat_message":
+            if self.partner:
+                await self.partner.send(text_data=json.dumps({
+                    "type": "chat_message",
+                    "message": data.get("message")
+                }))
+
+        elif msg_type in ["offer", "answer", "ice_candidate"]:
+            if self.partner:
+                await self.partner.send(text_data=json.dumps(data))
+
+        elif msg_type == "typing":
+            if self.partner:
+                await self.partner.send(text_data=json.dumps({"type": "typing"}))
+
+        elif msg_type == "stop_typing":
+            if self.partner:
+                await self.partner.send(text_data=json.dumps({"type": "stop_typing"}))
+
+    # =========================
+    # MATCHING LOGIC
+    # =========================
+    async def find_partner(self):
+        global waiting_users
+
+        if self in waiting_users:
+            return
 
         if waiting_users:
             partner = waiting_users.pop(0)
 
-            self.room_name = f"room_{id(self)}_{id(partner)}"
-            partner.room_name = self.room_name
+            self.partner = partner
+            partner.partner = self
 
-            await self.channel_layer.group_add(self.room_name, self.channel_name)
-            await self.channel_layer.group_add(self.room_name, partner.channel_name)
+            # assign roles
+            await self.send(text_data=json.dumps({
+                "type": "partner_found",
+                "role": "caller"
+            }))
 
-            await self.channel_layer.group_send(
-                self.room_name,
-                {
-                    "type": "chat_start",
-                }
-            )
+            await partner.send(text_data=json.dumps({
+                "type": "partner_found",
+                "role": "receiver"
+            }))
+
         else:
             waiting_users.append(self)
 
@@ -34,32 +84,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "type": "waiting"
             }))
 
-    async def chat_start(self, event):
-        await self.send(text_data=json.dumps({
-            "type": "connected"
-        }))
+    # =========================
+    # SKIP LOGIC
+    # =========================
+    async def skip_partner(self):
+        if self.partner:
+            await self.partner.send(text_data=json.dumps({
+                "type": "partner_disconnected"
+            }))
+            self.partner.partner = None
+            self.partner = None
 
-    async def receive(self, text_data):
-        data = json.loads(text_data)
-        message = data.get("message")
-
-        if hasattr(self, "room_name"):
-            await self.channel_layer.group_send(
-                self.room_name,
-                {
-                    "type": "chat_message",
-                    "message": message
-                }
-            )
-
-    async def chat_message(self, event):
-        await self.send(text_data=json.dumps({
-            "type": "message",
-            "message": event["message"]
-        }))
-
-    async def disconnect(self, close_code):
-        global waiting_users
-
-        if self in waiting_users:
-            waiting_users.remove(self)
+        await self.find_partner()
