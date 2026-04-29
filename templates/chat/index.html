@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OmegaChat - Talk to Real Strangers</title>
+{% load static %}
+<link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+<nav>
+  <div class="logo">Omega<span>Chat</span></div>
+  <div class="nav-center">
+    <div class="online-pill">
+      <span class="dot"></span>
+      <span id="online-count">0 online</span>
+    </div>
+  </div>
+  <div class="nav-links">
+    <a href="#">Safety</a>
+    <a href="#">About</a>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="badge">⚡ Real People · No Bots · No Account Needed</div>
+  <h1>Chat With Real<br><span class="g1">Strangers</span> Live</h1>
+  <p>Real-time video & text chat with real people worldwide.<br>Powered by WebRTC — peer-to-peer, private, instant.</p>
+
+  <div class="mode-selector">
+    <div class="mode-card active" id="mode-video" onclick="setMode('video')">
+      <div class="mode-icon">📹</div>
+      <div class="mode-name">Video + Text</div>
+      <div class="mode-sub">See & talk to strangers</div>
+    </div>
+    <div class="mode-card" id="mode-text" onclick="setMode('text')">
+      <div class="mode-icon">💬</div>
+      <div class="mode-name">Text Only</div>
+      <div class="mode-sub">Anonymous text chat</div>
+    </div>
+  </div>
+
+  <div class="interests-wrap">
+    <p class="int-label">Add interests (optional):</p>
+    <div class="tags" id="tags">
+      <span class="tag" onclick="toggleTag(this)">Music</span>
+      <span class="tag" onclick="toggleTag(this)">Gaming</span>
+      <span class="tag" onclick="toggleTag(this)">Movies</span>
+      <span class="tag" onclick="toggleTag(this)">Sports</span>
+      <span class="tag" onclick="toggleTag(this)">Tech</span>
+      <span class="tag" onclick="toggleTag(this)">Art</span>
+      <span class="tag" onclick="toggleTag(this)">Travel</span>
+      <span class="tag" onclick="toggleTag(this)">Anime</span>
+      <span class="tag" onclick="toggleTag(this)">Science</span>
+      <span class="tag" onclick="toggleTag(this)">Fitness</span>
+      <span class="tag" onclick="toggleTag(this)">Cooking</span>
+      <span class="tag" onclick="toggleTag(this)">Language</span>
+    </div>
+  </div>
+
+  <button class="btn-start" onclick="startChat()">
+    Start Chatting →
+  </button>
+  <p class="disclaimer">By continuing you confirm you are 18+ and agree to our <a href="#">Terms</a>.</p>
+</section>
+
+<section class="features">
+  <h2>Why OmegaChat?</h2>
+  <div class="feat-grid">
+    <div class="feat"><div class="ficon">🔒</div><h3>100% Anonymous</h3><p>No login required. Your identity is never stored.</p></div>
+    <div class="feat"><div class="ficon">📡</div><h3>Peer-to-Peer</h3><p>WebRTC direct connection — no video goes through our servers.</p></div>
+    <div class="feat"><div class="ficon">⚡</div><h3>Instant Match</h3><p>Connect with a real stranger in seconds using WebSockets.</p></div>
+    <div class="feat"><div class="ficon">🌍</div><h3>190+ Countries</h3><p>Meet real people from all around the world, live.</p></div>
+    <div class="feat"><div class="ficon">🛡️</div><h3>One-Click Report</h3><p>Instant skip and report to keep community safe.</p></div>
+    <div class="feat"><div class="ficon">📱</div><h3>Works Everywhere</h3><p>Any browser, any device. No download needed.</p></div>
+  </div>
+</section>
+
+<footer>
+  <div class="flinks">
+    <a href="#">Terms of Service</a>
+    <a href="#">Privacy Policy</a>
+    <a href="#">Safety Tips</a>
+    <a href="#">Community Guidelines</a>
+    <a href="#">Contact</a>
+  </div>
+  <div class="fcopy">© 2025 OmegaChat — Real connections, real people.</div>
+</footer>
+
+<script>
+let selectedMode = 'video';
+
+function setMode(m) {
+  selectedMode = m;
+  document.getElementById('mode-video').classList.toggle('active', m === 'video');
+  document.getElementById('mode-text').classList.toggle('active', m === 'text');
+}
+
+function toggleTag(el) {
+  el.classList.toggle('selected');
+}
+
+function startChat() {
+  const interests = [...document.querySelectorAll('.tag.selected')].map(t => t.textContent).join(',');
+  window.location.href = `/chat/?mode=${selectedMode}&interests=${encodeURIComponent(interests)}`;
+}
+
+// Simulated online count (replace with real WebSocket count if desired)
+let count = Math.floor(Math.random() * 5000) + 18000;
+document.getElementById('online-count').textContent = count.toLocaleString() + ' online';
+setInterval(() => {
+  count += Math.floor(Math.random() * 20 - 8);
+  document.getElementById('online-count').textContent = count.toLocaleString() + ' online';
+}, 4000);
+</script>
+</body>
+</html>

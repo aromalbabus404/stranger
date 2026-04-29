@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OmegaChat - Live Chat</title>
+{% load static %}
+<link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body class="room-page">
+
+<nav class="room-nav">
+  <a href="/" class="logo">Omega<span>Chat</span></a>
+  <div class="room-status">
+    <span class="dot" id="ws-dot" style="background:#ef4444"></span>
+    <span id="ws-label">Connecting...</span>
+  </div>
+  <div class="nav-links">
+    <a href="/">← Home</a>
+  </div>
+</nav>
+
+<div class="room-layout">
+
+  <!-- LEFT: Videos -->
+  <div class="video-col">
+
+    <div class="video-grid">
+
+      <!-- Stranger video -->
+      <div class="vid-box" id="stranger-box">
+        <div class="vid-label">Stranger</div>
+        <video id="remote-video" autoplay playsinline></video>
+        <div class="vid-overlay" id="stranger-overlay">
+          <div class="overlay-content">
+            <div class="spinner" id="spinner"></div>
+            <p id="overlay-msg">Finding a stranger...</p>
+          </div>
+        </div>
+        <div class="vid-badge" id="stranger-badge" style="display:none">
+          <span class="dot" style="background:#22c55e"></span> Live
+        </div>
+      </div>
+
+      <!-- Your video -->
+      <div class="vid-box you-box">
+        <div class="vid-label">You</div>
+        <video id="local-video" autoplay muted playsinline></video>
+        <div class="vid-overlay" id="local-overlay">
+          <div class="overlay-content">
+            <p>📷 Camera off</p>
+          </div>
+        </div>
+        <!-- Controls -->
+        <div class="local-controls">
+          <button class="ctrl" id="mic-btn" onclick="toggleMic()" title="Mute/Unmute">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </button>
+          <button class="ctrl" id="cam-btn" onclick="toggleCam()" title="Camera on/off">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /.video-grid -->
+
+    <!-- Action buttons -->
+    <div class="action-row">
+      <button class="btn-next" onclick="skipStranger()">⏭ Next Stranger</button>
+      <button class="btn-stop" onclick="stopChat()">✕ Stop</button>
+    </div>
+
+  </div><!-- /.video-col -->
+
+  <!-- RIGHT: Chat -->
+  <div class="chat-col">
+    <div class="chat-top">
+      <span class="chat-title">💬 Live Chat</span>
+      <button class="report-btn" onclick="reportUser()">🚩 Report</button>
+    </div>
+
+    <div class="messages" id="messages"></div>
+
+    <div class="typing-area" id="typing-area" style="display:none">
+      <div class="typing-indicator">
+        <span></span><span></span><span></span>
+      </div>
+      <span>Stranger is typing...</span>
+    </div>
+
+    <div class="chat-input-row">
+      <input
+        id="chat-input"
+        class="chat-input"
+        type="text"
+        placeholder="Type a message... (Enter to send)"
+        maxlength="500"
+        disabled
+        oninput="onTyping()"
+        onkeydown="onKey(event)"
+      />
+      <button class="send-btn" onclick="sendMsg()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+
+</div><!-- /.room-layout -->
+
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
+<script>
+// =====================
+// CONFIG
+// =====================
+const params = new URLSearchParams(window.location.search);
+const MODE = params.get('mode') || 'video';
+
+const WS_URL = `ws://${window.location.host}/ws/chat/`;
+
+const ICE_SERVERS = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ]
+};
+
+// =====================
+// STATE
+// =====================
+let ws = null;
+let localStream = null;
+let peerConnection = null;
+let myRole = null; // 'caller' or 'receiver'
+let connected = false;
+let micOn = true;
+let camOn = true;
+let typingTimer = null;
+let isTyping = false;
+
+// =====================
+// INIT
+// =====================
+window.addEventListener('load', async () => {
+  if (MODE === 'video') await startCamera();
+  connectWebSocket();
+});
+
+// =====================
+// CAMERA
+// =====================
+async function startCamera() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById('local-video').srcObject = localStream;
+    document.getElementById('local-overlay').style.display = 'none';
+    toast('📹 Camera ready');
+  } catch (e) {
+    toast('⚠️ Camera not accessible — text only');
+  }
+}
+
+// =====================
+// WEBSOCKET
+// =====================
+function connectWebSocket() {
+  ws = new WebSocket(WS_URL);
+
+  // FIX: All sends must happen inside onopen — the socket is not ready before this fires.
+  ws.onopen = () => {
+    setStatus(true);
+    addSysMsg('🔌 Connected to server. Finding a stranger...');
+    // FIX: Merged the duplicate/misplaced find_partner send into a single call here.
+    ws.send(JSON.stringify({
+      type: 'find_partner',
+      mode: MODE,
+      country: 'India'
+    }));
+  };
+
+  ws.onclose = () => {
+    setStatus(false);
+    addSysMsg('❌ Disconnected from server.');
+    connected = false;
+  };
+
+  ws.onerror = () => {
+    setStatus(false);
+    addSysMsg('⚠️ Connection error. Please refresh.');
+  };
+
+  ws.onmessage = async (e) => {
+    const data = JSON.parse(e.data);
+    await handleMessage(data);
+  };
+}
+
+function setStatus(online) {
+  document.getElementById('ws-dot').style.background = online ? '#22c55e' : '#ef4444';
+  document.getElementById('ws-label').textContent = online ? 'Connected' : 'Disconnected';
+}
+
+// =====================
+// MESSAGE HANDLER
+// =====================
+async function handleMessage(data) {
+  switch (data.type) {
+
+    case 'waiting':
+      showOverlay('Finding a stranger...');
+      addSysMsg('⏳ Waiting for a partner...');
+      break;
+
+    case 'partner_found':
+      myRole = data.role;
+      connected = true;
+      hideOverlay();
+      document.getElementById('stranger-badge').style.display = 'flex';
+      document.getElementById('chat-input').disabled = false;
+      addSysMsg('✅ Stranger connected! Say hello.');
+      toast('✅ Stranger found!');
+      if (MODE === 'video') {
+        await setupPeerConnection();
+        if (myRole === 'caller') await createAndSendOffer();
+      }
+      break;
+
+    case 'offer':
+      if (MODE === 'video') {
+        await setupPeerConnection();
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        wsSend({ type: 'answer', sdp: answer });
+      }
+      break;
+
+    case 'answer':
+      if (peerConnection) {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      }
+      break;
+
+    case 'ice_candidate':
+      if (peerConnection && data.candidate) {
+        try {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } catch (e) {}
+      }
+      break;
+
+    case 'chat_message':
+      addMsg('stranger', data.message);
+      break;
+
+    case 'typing':
+      showTyping();
+      break;
+
+    case 'stop_typing':
+      hideTyping();
+      break;
+
+    case 'partner_disconnected':
+      connected = false;
+      document.getElementById('chat-input').disabled = true;
+      document.getElementById('stranger-badge').style.display = 'none';
+      addSysMsg('👋 Stranger has disconnected.');
+      toast('👋 Stranger left');
+      cleanupPeer();
+      showOverlay('Stranger disconnected. Click "Next" to find another.');
+      document.getElementById('remote-video').srcObject = null;
+      break;
+  }
+}
+
+// =====================
+// WebRTC
+// =====================
+async function setupPeerConnection() {
+  cleanupPeer();
+  peerConnection = new RTCPeerConnection(ICE_SERVERS);
+
+  if (localStream) {
+    localStream.getTracks().forEach(track => {
+      peerConnection.addTrack(track, localStream);
+    });
+  }
+
+  peerConnection.ontrack = (event) => {
+    const remoteVideo = document.getElementById('remote-video');
+    if (remoteVideo.srcObject !== event.streams[0]) {
+      remoteVideo.srcObject = event.streams[0];
+    }
+  };
+
+  peerConnection.onicecandidate = (event) => {
+    if (event.candidate) {
+      wsSend({ type: 'ice_candidate', candidate: event.candidate });
+    }
+  };
+
+  peerConnection.onconnectionstatechange = () => {
+    if (peerConnection.connectionState === 'connected') {
+      toast('📡 Video connection established!');
+    }
+  };
+}
+
+async function createAndSendOffer() {
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+  wsSend({ type: 'offer', sdp: offer });
+}
+
+function cleanupPeer() {
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+  }
+}
+
+// =====================
+// CHAT
+// =====================
+function sendMsg() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text || !connected) return;
+  addMsg('you', text);
+  wsSend({ type: 'chat_message', message: text });
+  input.value = '';
+  stopTypingSignal();
+}
+
+function onKey(e) {
+  if (e.key === 'Enter') { e.preventDefault(); sendMsg(); }
+}
+
+function onTyping() {
+  if (!isTyping) {
+    isTyping = true;
+    wsSend({ type: 'typing' });
+  }
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(stopTypingSignal, 2000);
+}
+
+function stopTypingSignal() {
+  // FIX: Guard added — only send if still connected to avoid errors on page unload.
+  if (!isTyping) return;
+  isTyping = false;
+  wsSend({ type: 'stop_typing' });
+}
+
+function addMsg(who, text) {
+  const msgs = document.getElementById('messages');
+  const d = document.createElement('div');
+  d.className = `msg ${who}`;
+  const safe = document.createElement('span');
+  safe.textContent = text;
+  d.appendChild(safe);
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addSysMsg(text) {
+  const msgs = document.getElementById('messages');
+  const d = document.createElement('div');
+  d.className = 'msg system';
+  d.textContent = text;
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function showTyping() {
+  document.getElementById('typing-area').style.display = 'flex';
+}
+
+function hideTyping() {
+  document.getElementById('typing-area').style.display = 'none';
+}
+
+// =====================
+// CONTROLS
+// =====================
+function toggleMic() {
+  if (!localStream) return;
+  micOn = !micOn;
+  localStream.getAudioTracks().forEach(t => t.enabled = micOn);
+  document.getElementById('mic-btn').classList.toggle('off', !micOn);
+  toast(micOn ? '🎤 Mic on' : '🔇 Mic muted');
+}
+
+function toggleCam() {
+  if (!localStream) return;
+  camOn = !camOn;
+  localStream.getVideoTracks().forEach(t => t.enabled = camOn);
+  document.getElementById('cam-btn').classList.toggle('off', !camOn);
+  document.getElementById('local-overlay').style.display = camOn ? 'none' : 'flex';
+  toast(camOn ? '📹 Camera on' : '📷 Camera off');
+}
+
+function skipStranger() {
+  connected = false;
+  cleanupPeer();
+  document.getElementById('chat-input').disabled = true;
+  document.getElementById('remote-video').srcObject = null;
+  document.getElementById('stranger-badge').style.display = 'none';
+  hideTyping();
+  addSysMsg('⏭ Finding next stranger...');
+  showOverlay('Finding a new stranger...');
+  wsSend({ type: 'skip' });
+}
+
+function stopChat() {
+  // FIX: cleanupPeer() must be called before closing the stream to avoid
+  // the peer connection referencing stopped tracks.
+  cleanupPeer();
+  if (localStream) localStream.getTracks().forEach(t => t.stop());
+  if (ws) ws.close();
+  window.location.href = '/';
+}
+
+function reportUser() {
+  toast('🚩 User reported. Thank you!');
+  skipStranger();
+}
+
+// =====================
+// OVERLAY
+// =====================
+function showOverlay(msg) {
+  document.getElementById('stranger-overlay').style.display = 'flex';
+  document.getElementById('overlay-msg').textContent = msg;
+  // FIX: Only show spinner while actively searching, not on disconnect message.
+  const searching = msg.toLowerCase().includes('finding');
+  document.getElementById('spinner').style.display = searching ? 'block' : 'none';
+}
+
+function hideOverlay() {
+  document.getElementById('stranger-overlay').style.display = 'none';
+}
+
+// =====================
+// UTILS
+// =====================
+function wsSend(data) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(data));
+  }
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 3000);
+}
+
+window.addEventListener('beforeunload', () => {
+  if (ws) ws.close();
+});
+</script>
+</body>
+</html>
