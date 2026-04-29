@@ -49,7 +49,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'omegachat.wsgi.application'
-ASGI_APPLICATION = 'omegachat.asgi.application'
+ASGI_APPLICATION = "omegachat.asgi.application"
 
 CHANNEL_LAYERS = {
     "default": {

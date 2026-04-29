@@ -60,11 +60,10 @@
 
   <button onclick="startChat()">Start Stranger Chat</button>
 
-<div id="status"></div>
-<div id="chat" style="display:none;">
-    <input id="msg" placeholder="Type message">
-    <button onclick="sendMsg()">Send</button>
-</div>
+<p id="status"></p>
+
+<input id="msg" placeholder="Type message">
+<button onclick="sendMsg()">Send</button>
 
 <script>
 let socket;
@@ -80,8 +79,7 @@ function startChat() {
         }
 
         if (data.type === "connected") {
-            document.getElementById("status").innerText = "Connected!";
-            document.getElementById("chat").style.display = "block";
+            document.getElementById("status").innerText = "Connected to stranger!";
         }
 
         if (data.type === "message") {
