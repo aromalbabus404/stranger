@@ -9,25 +9,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.accept()
         self.partner = None
         self.in_queue = False
-        print("User connected")
 
     async def disconnect(self, close_code):
         global waiting_users
 
-        # Remove from queue if waiting
-        if self.in_queue and self in waiting_users:
+        if self in waiting_users:
             waiting_users.remove(self)
         self.in_queue = False
 
-        # Notify partner if connected
         if self.partner:
-            await self.partner.send(text_data=json.dumps({
-                "type": "partner_disconnected"
-            }))
-            # FIX: Also reset partner's in_queue so they can re-queue freely
-            self.partner.in_queue = False
-            self.partner.partner = None
+            old_partner = self.partner
             self.partner = None
+            old_partner.partner = None
+            old_partner.in_queue = False
+            try:
+                await old_partner.send(text_data=json.dumps({
+                    "type": "partner_disconnected"
+                }))
+            except Exception:
+                pass
 
     async def receive(self, text_data):
         data = json.loads(text_data)
@@ -58,36 +58,37 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if self.partner:
                 await self.partner.send(text_data=json.dumps({"type": "stop_typing"}))
 
-    # =========================
     async def find_partner(self):
         global waiting_users
 
-        # Prevent duplicate queue entry
+        # Already in queue — do nothing
         if self.in_queue:
             return
 
-        # FIX: Skip stale disconnected users sitting in the queue
+        # Already has a partner — do nothing
+        if self.partner:
+            return
+
+        # Find a valid waiting user
         partner = None
         while waiting_users:
             candidate = waiting_users.pop(0)
-            # Skip ourselves
             if candidate is self:
                 continue
             partner = candidate
             break
 
         if partner:
+            # Link the two users
             self.partner = partner
             partner.partner = self
-
-            self.in_queue = False
             partner.in_queue = False
+            self.in_queue = False
 
             await self.send(text_data=json.dumps({
                 "type": "partner_found",
                 "role": "caller"
             }))
-
             await partner.send(text_data=json.dumps({
                 "type": "partner_found",
                 "role": "receiver"
@@ -96,26 +97,29 @@ class ChatConsumer(AsyncWebsocketConsumer):
         else:
             waiting_users.append(self)
             self.in_queue = True
-
             await self.send(text_data=json.dumps({
                 "type": "waiting"
             }))
 
-    # =========================
     async def skip_partner(self):
-        # Notify old partner they were skipped
-        if self.partner:
-            await self.partner.send(text_data=json.dumps({
-                "type": "partner_disconnected"
-            }))
-            # FIX: Reset old partner's state so they can re-queue after being skipped
-            self.partner.in_queue = False
-            self.partner.partner = None
-            self.partner = None
+        global waiting_users
 
-        # FIX: Explicitly reset own in_queue before re-queuing.
-        # Without this, the duplicate-queue guard in find_partner() would
-        # block us from finding the next stranger after a skip.
+        # Disconnect from current partner
+        if self.partner:
+            old_partner = self.partner
+            self.partner = None
+            old_partner.partner = None
+            old_partner.in_queue = False
+
+            try:
+                await old_partner.send(text_data=json.dumps({
+                    "type": "partner_disconnected"
+                }))
+            except Exception:
+                pass
+
+        # Reset own state before searching again
         self.in_queue = False
+        self.partner = None
 
         await self.find_partner()
