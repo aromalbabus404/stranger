@@ -58,60 +58,45 @@
     </div>
   </div>
 
-  <button class="btn-start" onclick="startChat()">
-    Start Chatting →
-  </button>
-  <p class="disclaimer">By continuing you confirm you are 18+ and agree to our <a href="#">Terms</a>.</p>
-</section>
+  <button onclick="startChat()">Start Stranger Chat</button>
 
-<section class="features">
-  <h2>Why OmegaChat?</h2>
-  <div class="feat-grid">
-    <div class="feat"><div class="ficon">🔒</div><h3>100% Anonymous</h3><p>No login required. Your identity is never stored.</p></div>
-    <div class="feat"><div class="ficon">📡</div><h3>Peer-to-Peer</h3><p>WebRTC direct connection — no video goes through our servers.</p></div>
-    <div class="feat"><div class="ficon">⚡</div><h3>Instant Match</h3><p>Connect with a real stranger in seconds using WebSockets.</p></div>
-    <div class="feat"><div class="ficon">🌍</div><h3>190+ Countries</h3><p>Meet real people from all around the world, live.</p></div>
-    <div class="feat"><div class="ficon">🛡️</div><h3>One-Click Report</h3><p>Instant skip and report to keep community safe.</p></div>
-    <div class="feat"><div class="ficon">📱</div><h3>Works Everywhere</h3><p>Any browser, any device. No download needed.</p></div>
-  </div>
-</section>
-
-<footer>
-  <div class="flinks">
-    <a href="#">Terms of Service</a>
-    <a href="#">Privacy Policy</a>
-    <a href="#">Safety Tips</a>
-    <a href="#">Community Guidelines</a>
-    <a href="#">Contact</a>
-  </div>
-  <div class="fcopy">© 2025 OmegaChat — Real connections, real people.</div>
-</footer>
+<div id="status"></div>
+<div id="chat" style="display:none;">
+    <input id="msg" placeholder="Type message">
+    <button onclick="sendMsg()">Send</button>
+</div>
 
 <script>
-let selectedMode = 'video';
-
-function setMode(m) {
-  selectedMode = m;
-  document.getElementById('mode-video').classList.toggle('active', m === 'video');
-  document.getElementById('mode-text').classList.toggle('active', m === 'text');
-}
-
-function toggleTag(el) {
-  el.classList.toggle('selected');
-}
+let socket;
 
 function startChat() {
-  const interests = [...document.querySelectorAll('.tag.selected')].map(t => t.textContent).join(',');
-  window.location.href = `/chat/?mode=${selectedMode}&interests=${encodeURIComponent(interests)}`;
+    socket = new WebSocket("ws://" + window.location.host + "/ws/chat/");
+
+    socket.onmessage = function(e) {
+        let data = JSON.parse(e.data);
+
+        if (data.type === "waiting") {
+            document.getElementById("status").innerText = "Waiting for stranger...";
+        }
+
+        if (data.type === "connected") {
+            document.getElementById("status").innerText = "Connected!";
+            document.getElementById("chat").style.display = "block";
+        }
+
+        if (data.type === "message") {
+            console.log("Stranger:", data.message);
+        }
+    };
 }
 
-// Simulated online count (replace with real WebSocket count if desired)
-let count = Math.floor(Math.random() * 5000) + 18000;
-document.getElementById('online-count').textContent = count.toLocaleString() + ' online';
-setInterval(() => {
-  count += Math.floor(Math.random() * 20 - 8);
-  document.getElementById('online-count').textContent = count.toLocaleString() + ' online';
-}, 4000);
+function sendMsg() {
+    let msg = document.getElementById("msg").value;
+
+    socket.send(JSON.stringify({
+        message: msg
+    }));
+}
 </script>
 </body>
 </html>

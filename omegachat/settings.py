@@ -52,9 +52,9 @@ WSGI_APPLICATION = 'omegachat.wsgi.application'
 ASGI_APPLICATION = 'omegachat.asgi.application'
 
 CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',
-    }
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
 }
 
 DATABASES = {

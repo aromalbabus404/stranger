@@ -9,3 +9,21 @@ def index(request):
 
 def chat_room(request):
     return render(request, 'chat/room.html')
+
+def connect_user(user):
+    if waiting_users:
+        partner = waiting_users.pop(0)
+
+        # 🔥 CONNECT BOTH USERS
+        create_room(user, partner)
+
+        return {
+            "status": "connected",
+            "partner": partner
+        }
+    else:
+        waiting_users.append(user)
+
+        return {
+            "status": "waiting"
+        }
