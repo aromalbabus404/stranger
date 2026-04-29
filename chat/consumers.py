@@ -14,13 +14,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, close_code):
         global waiting_users
 
+        # Remove from queue if waiting
         if self.in_queue and self in waiting_users:
             waiting_users.remove(self)
+        self.in_queue = False
 
+        # Notify partner if connected
         if self.partner:
             await self.partner.send(text_data=json.dumps({
                 "type": "partner_disconnected"
             }))
+            # FIX: Also reset partner's in_queue so they can re-queue freely
+            self.partner.in_queue = False
             self.partner.partner = None
             self.partner = None
 
@@ -57,13 +62,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def find_partner(self):
         global waiting_users
 
-        # prevent duplicate queue
+        # Prevent duplicate queue entry
         if self.in_queue:
             return
 
-        if waiting_users:
-            partner = waiting_users.pop(0)
+        # FIX: Skip stale disconnected users sitting in the queue
+        partner = None
+        while waiting_users:
+            candidate = waiting_users.pop(0)
+            # Skip ourselves
+            if candidate is self:
+                continue
+            partner = candidate
+            break
 
+        if partner:
             self.partner = partner
             partner.partner = self
 
@@ -90,11 +103,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     # =========================
     async def skip_partner(self):
+        # Notify old partner they were skipped
         if self.partner:
             await self.partner.send(text_data=json.dumps({
                 "type": "partner_disconnected"
             }))
+            # FIX: Reset old partner's state so they can re-queue after being skipped
+            self.partner.in_queue = False
             self.partner.partner = None
             self.partner = None
+
+        # FIX: Explicitly reset own in_queue before re-queuing.
+        # Without this, the duplicate-queue guard in find_partner() would
+        # block us from finding the next stranger after a skip.
+        self.in_queue = False
 
         await self.find_partner()
