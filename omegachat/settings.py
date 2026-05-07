@@ -51,9 +51,14 @@ TEMPLATES = [
 WSGI_APPLICATION = 'omegachat.wsgi.application'
 ASGI_APPLICATION = "omegachat.asgi.application"
 
+
+
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("your-redis-url", 6379)],
+        },
     },
 }
 
