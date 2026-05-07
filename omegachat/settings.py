@@ -53,15 +53,14 @@ ASGI_APPLICATION = "omegachat.asgi.application"
 
 
 
+# After
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("your-redis-url", 6379)],
-        },
+        "CONFIG": {"hosts": [REDIS_URL]},
     },
 }
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',

@@ -117,7 +117,8 @@
 const params = new URLSearchParams(window.location.search);
 const MODE = params.get('mode') || 'video';
 
-const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/chat/`;
+// After
+const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat/`;
 
 const ICE_SERVERS = {
   iceServers: [
